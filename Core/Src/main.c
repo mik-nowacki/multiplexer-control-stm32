@@ -48,6 +48,7 @@ const int MUX1 = 0;
 const int MUX2 = 1;
 const int MUX3 = 2;
 const int MUX_SELECT_PINS[3][3] = {{M1_S0_Pin, M1_S1_Pin, M1_S2_Pin}, {M1_S0_Pin, M1_S1_Pin, M1_S2_Pin}, {M1_S0_Pin, M1_S1_Pin, M1_S2_Pin}};
+const int NUMBER_OF_SENSORS[3] = {4, 4 ,4};
 const int NUMBER_OF_RESISTORS = 8;
 const int MAX_RESOLUTION_VALUE = 4095;
 const double VOLT_IN = 2.95;
@@ -75,6 +76,7 @@ void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
 static void MX_ADC1_Init(void);
 /* USER CODE BEGIN PFP */
+
 void selectMuxPin(int pin, int mux) {
     for (int i = 0; i < 8; i++) {
         if (pin & (1 << i))
@@ -84,6 +86,7 @@ void selectMuxPin(int pin, int mux) {
     }
 
 }
+
 
 void switchMuxPin(int mux, int pin)
 {
@@ -132,16 +135,36 @@ void switchMuxPin(int mux, int pin)
 
 }
 
-double calculateForce(uint16_t _analogRead, int _resistor){
+
+double calculateForce(uint16_t _analogRead, int _resistor)
+{
 //  convert analogRead to Volt
 	voltageAOC = (double)_analogRead * (VOLT_IN / MAX_RESOLUTION_VALUE);  // 500mV max value
 	current = voltageAOC / _resistor;
 	sensorResistance = (VOLT_IN / current) - _resistor;
 	conductance = 1000000 / sensorResistance;
 
-//	TODO [g] -> [N] and send this value via ros pkg, max 0.1 resolution
-//	TODO CONVERT TO NEWTONS
-	return A * pow(conductance, B);
+	return ((A * pow(conductance, B)) / 1000) * 9.81; // return value in [N]
+}
+
+
+void readMultiplexer(int mux, int yFirst, int yLast)
+{
+	for (int pin = yFirst; pin < yLast; pin++)
+	{
+	  switchMuxPin(mux, pin);
+
+	  HAL_ADC_Start(&hadc1); // start the ADC
+
+	  if(HAL_ADC_PollForConversion(&hadc1, 10) == HAL_OK)  // poll for conversion
+		  {
+		  analogRead = HAL_ADC_GetValue(&hadc1);
+		  }
+
+	  HAL_ADC_Stop(&hadc1);
+
+	  forceArray[pin] = calculateForce(analogRead, RESISTOR_47);
+	}
 }
 /* USER CODE END PFP */
 
@@ -157,7 +180,9 @@ double calculateForce(uint16_t _analogRead, int _resistor){
 int main(void)
 {
   /* USER CODE BEGIN 1 */
-
+  int mux1LastPinIndex = NUMBER_OF_SENSORS[MUX1];
+  int mux2LastPinIndex = NUMBER_OF_SENSORS[MUX1] + NUMBER_OF_SENSORS[MUX2];
+  int mux3LastPinIndex = NUMBER_OF_SENSORS[MUX1] + NUMBER_OF_SENSORS[MUX2] + NUMBER_OF_SENSORS[MUX3];
   /* USER CODE END 1 */
 
   /* MCU Configuration--------------------------------------------------------*/
@@ -191,27 +216,10 @@ int main(void)
 
     /* USER CODE BEGIN 3 */
 
-//	  MULTIPLEXER 1
-	  for (int i=0; i<8; i++)
-	  {
-		  switchMuxPin(MUX1, 0);
-
-		  HAL_ADC_Start(&hadc1); // start the ADC
-
-		  if(HAL_ADC_PollForConversion(&hadc1, 10) == HAL_OK)  // poll for conversion
-			  {
-			  analogRead = HAL_ADC_GetValue(&hadc1);
-			  }
-
-		  HAL_ADC_Stop(&hadc1);
-
-		  forceArray[0] = calculateForce(analogRead, RESISTOR_47);
-	  }
-
-//	  MULTIPLEXER 2
-
-
-//	  MULTIPLEXER 3
+//	  Read multiplexer pins
+	  readMultiplexer(MUX1, 0, mux1LastPinIndex);
+	  readMultiplexer(MUX2, mux1LastPinIndex, mux2LastPinIndex);
+	  readMultiplexer(MUX3, mux2LastPinIndex, mux3LastPinIndex);
 
 	  HAL_Delay(100);
   }

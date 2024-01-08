@@ -18,11 +18,10 @@
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
-#include "math.h"
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-
+#include <math.h>
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -33,6 +32,10 @@
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
 #define SELECT_PINS_PORT GPIOE
+#define MUX1 0
+#define MUX2 1
+#define MUX3 2
+#define NUMBER_OF_MULTIPLEXERS 3
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -42,32 +45,36 @@
 
 /* Private variables ---------------------------------------------------------*/
 ADC_HandleTypeDef hadc1;
+ADC_HandleTypeDef hadc2;
+ADC_HandleTypeDef hadc3;
 
 /* USER CODE BEGIN PV */
-const int MUX1 = 0;
-const int MUX2 = 1;
-const int MUX3 = 2;
-const int MUX_SELECT_PINS[3][3] = {{M1_S0_Pin, M1_S1_Pin, M1_S2_Pin}, {M1_S0_Pin, M1_S1_Pin, M1_S2_Pin}, {M1_S0_Pin, M1_S1_Pin, M1_S2_Pin}};
-const int NUMBER_OF_SENSORS[3] = {4, 4 ,4};
-const int NUMBER_OF_RESISTORS = 8;
-const int MAX_RESOLUTION_VALUE = 4095;
-const double VOLT_IN = 2.95;
-const int RESISTOR_47 = 4700; // resistor 4.7 kOhm
-const int RESISTOR_22 = 2200; // resistor 2.2 kOhm
-//duzy konduktancja
+const int MUX_SELECT_PINS[3][3] = {{M1_S0_Pin, M1_S1_Pin, M1_S2_Pin}, {M2_S0_Pin, M2_S1_Pin, M2_S2_Pin}, {M3_S0_Pin, M3_S1_Pin, M3_S2_Pin}};  // S0-S2 pins
+const int NUMBER_OF_SENSORS[3] = {6, 7 ,6};  // Number of sensors connected to each multiplexer
+const int MAX_RESOLUTION_VALUE = 4095;  // 12-bit ADC resolution
+const int RESISTOR_47 = 4700;  // 4.7 kOhm resistor for smaller sensors
+const int RESISTOR_22 = 2200;  // 2.2 kOhm resistor for bigger sensors
+const double VOLT_IN = 2.95;  // STM32 supply voltage
+
+// Conductance of bigger sensors
 //	  double a = 0.06828695044280314;
 //	  double b = 1.430615164520744;
-//mały konduktancja działa :)
+
+// Conductance of smaller sensors
 const double A = 0.21618162974535243;
 const double B = 1.404494382022472;
 
-uint16_t analogRead = 0;
 double voltageAOC = 0.0;
 double current = 0.0;
 double sensorResistance = 0.0;
 double conductance = 0.0;
 double grams = 0.0;
-double forceArray[8] = {0, 0, 0, 0, 0, 0, 0, 0};
+double forceArray[19];
+
+// TODO temporary
+uint16_t analog1Read = 0;
+uint16_t analog2Read = 0;
+uint16_t analog3Read = 0;
 
 /* USER CODE END PV */
 
@@ -75,9 +82,11 @@ double forceArray[8] = {0, 0, 0, 0, 0, 0, 0, 0};
 void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
 static void MX_ADC1_Init(void);
+static void MX_ADC2_Init(void);
+static void MX_ADC3_Init(void);
 /* USER CODE BEGIN PFP */
 
-void selectMuxPin(int pin, int mux) {
+void selectMuxPin(int mux, int pin) {
     for (int i = 0; i < 8; i++) {
         if (pin & (1 << i))
             HAL_GPIO_WritePin(SELECT_PINS_PORT, MUX_SELECT_PINS[mux][i], GPIO_PIN_SET);
@@ -136,6 +145,57 @@ void switchMuxPin(int mux, int pin)
 }
 
 
+uint16_t hadc1Read()
+{
+	uint16_t analogRead = 0;
+
+	HAL_ADC_Start(&hadc1); // start the ADC
+
+	if(HAL_ADC_PollForConversion(&hadc1, 10) == HAL_OK)  // poll for conversion
+	  {
+		analogRead = HAL_ADC_GetValue(&hadc1);
+	  }
+
+	HAL_ADC_Stop(&hadc1);
+
+	return analogRead;
+}
+
+
+uint16_t hadc2Read()
+{
+	uint16_t analogRead = 0;
+
+	HAL_ADC_Start(&hadc2); // start the ADC
+
+	if(HAL_ADC_PollForConversion(&hadc2, 10) == HAL_OK)  // poll for conversion
+	  {
+		analogRead = HAL_ADC_GetValue(&hadc2);
+	  }
+
+	HAL_ADC_Stop(&hadc2);
+
+	return analogRead;
+}
+
+
+uint16_t hadc3Read()
+{
+	uint16_t analogRead = 0;
+
+	HAL_ADC_Start(&hadc3); // start the ADC
+
+	if(HAL_ADC_PollForConversion(&hadc3, 10) == HAL_OK)  // poll for conversion
+	  {
+	  analogRead = HAL_ADC_GetValue(&hadc3);
+	  }
+
+	HAL_ADC_Stop(&hadc3);
+
+	return analogRead;
+}
+
+
 double calculateForce(uint16_t _analogRead, int _resistor)
 {
 //  convert analogRead to Volt
@@ -148,22 +208,28 @@ double calculateForce(uint16_t _analogRead, int _resistor)
 }
 
 
-void readMultiplexer(int mux, int yFirst, int yLast)
+void readMultiplexer(int mux)
 {
-	for (int pin = yFirst; pin < yLast; pin++)
+	for (int pin = 0; pin < NUMBER_OF_SENSORS[mux]; pin++)
 	{
 	  switchMuxPin(mux, pin);
+	  switch(mux)
+	  {
+	  case MUX1:
+		  forceArray[pin + mux*NUMBER_OF_SENSORS[mux]] = calculateForce(hadc1Read(), RESISTOR_47); break;
+	  case MUX2:
+		  forceArray[pin + mux*NUMBER_OF_SENSORS[mux]] = calculateForce(hadc2Read(), RESISTOR_47); break;
+	  case MUX3:
+		  forceArray[pin + mux*NUMBER_OF_SENSORS[mux]] = calculateForce(hadc3Read(), RESISTOR_47); break;
+	  }
+	}
+}
 
-	  HAL_ADC_Start(&hadc1); // start the ADC
-
-	  if(HAL_ADC_PollForConversion(&hadc1, 10) == HAL_OK)  // poll for conversion
-		  {
-		  analogRead = HAL_ADC_GetValue(&hadc1);
-		  }
-
-	  HAL_ADC_Stop(&hadc1);
-
-	  forceArray[pin] = calculateForce(analogRead, RESISTOR_47);
+void readGloveSignals()
+{
+	for (int selected_mux = MUX1; selected_mux < NUMBER_OF_MULTIPLEXERS; selected_mux++)
+	{
+		readMultiplexer(selected_mux);
 	}
 }
 /* USER CODE END PFP */
@@ -180,9 +246,7 @@ void readMultiplexer(int mux, int yFirst, int yLast)
 int main(void)
 {
   /* USER CODE BEGIN 1 */
-  int mux1LastPinIndex = NUMBER_OF_SENSORS[MUX1];
-  int mux2LastPinIndex = NUMBER_OF_SENSORS[MUX1] + NUMBER_OF_SENSORS[MUX2];
-  int mux3LastPinIndex = NUMBER_OF_SENSORS[MUX1] + NUMBER_OF_SENSORS[MUX2] + NUMBER_OF_SENSORS[MUX3];
+
   /* USER CODE END 1 */
 
   /* MCU Configuration--------------------------------------------------------*/
@@ -204,6 +268,8 @@ int main(void)
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
   MX_ADC1_Init();
+  MX_ADC2_Init();
+  MX_ADC3_Init();
   /* USER CODE BEGIN 2 */
 
   /* USER CODE END 2 */
@@ -216,10 +282,7 @@ int main(void)
 
     /* USER CODE BEGIN 3 */
 
-//	  Read multiplexer pins
-	  readMultiplexer(MUX1, 0, mux1LastPinIndex);
-	  readMultiplexer(MUX2, mux1LastPinIndex, mux2LastPinIndex);
-	  readMultiplexer(MUX3, mux2LastPinIndex, mux3LastPinIndex);
+	  readGloveSignals();
 
 	  HAL_Delay(100);
   }
@@ -310,7 +373,7 @@ static void MX_ADC1_Init(void)
 
   /** Configure for the selected ADC regular channel its corresponding rank in the sequencer and its sample time.
   */
-  sConfig.Channel = ADC_CHANNEL_12;
+  sConfig.Channel = ADC_CHANNEL_8;
   sConfig.Rank = 1;
   sConfig.SamplingTime = ADC_SAMPLETIME_3CYCLES;
   if (HAL_ADC_ConfigChannel(&hadc1, &sConfig) != HAL_OK)
@@ -320,6 +383,110 @@ static void MX_ADC1_Init(void)
   /* USER CODE BEGIN ADC1_Init 2 */
 
   /* USER CODE END ADC1_Init 2 */
+
+}
+
+/**
+  * @brief ADC2 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_ADC2_Init(void)
+{
+
+  /* USER CODE BEGIN ADC2_Init 0 */
+
+  /* USER CODE END ADC2_Init 0 */
+
+  ADC_ChannelConfTypeDef sConfig = {0};
+
+  /* USER CODE BEGIN ADC2_Init 1 */
+
+  /* USER CODE END ADC2_Init 1 */
+
+  /** Configure the global features of the ADC (Clock, Resolution, Data Alignment and number of conversion)
+  */
+  hadc2.Instance = ADC2;
+  hadc2.Init.ClockPrescaler = ADC_CLOCK_SYNC_PCLK_DIV4;
+  hadc2.Init.Resolution = ADC_RESOLUTION_12B;
+  hadc2.Init.ScanConvMode = DISABLE;
+  hadc2.Init.ContinuousConvMode = DISABLE;
+  hadc2.Init.DiscontinuousConvMode = DISABLE;
+  hadc2.Init.ExternalTrigConvEdge = ADC_EXTERNALTRIGCONVEDGE_NONE;
+  hadc2.Init.ExternalTrigConv = ADC_SOFTWARE_START;
+  hadc2.Init.DataAlign = ADC_DATAALIGN_RIGHT;
+  hadc2.Init.NbrOfConversion = 1;
+  hadc2.Init.DMAContinuousRequests = DISABLE;
+  hadc2.Init.EOCSelection = ADC_EOC_SINGLE_CONV;
+  if (HAL_ADC_Init(&hadc2) != HAL_OK)
+  {
+    Error_Handler();
+  }
+
+  /** Configure for the selected ADC regular channel its corresponding rank in the sequencer and its sample time.
+  */
+  sConfig.Channel = ADC_CHANNEL_9;
+  sConfig.Rank = 1;
+  sConfig.SamplingTime = ADC_SAMPLETIME_3CYCLES;
+  if (HAL_ADC_ConfigChannel(&hadc2, &sConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN ADC2_Init 2 */
+
+  /* USER CODE END ADC2_Init 2 */
+
+}
+
+/**
+  * @brief ADC3 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_ADC3_Init(void)
+{
+
+  /* USER CODE BEGIN ADC3_Init 0 */
+
+  /* USER CODE END ADC3_Init 0 */
+
+  ADC_ChannelConfTypeDef sConfig = {0};
+
+  /* USER CODE BEGIN ADC3_Init 1 */
+
+  /* USER CODE END ADC3_Init 1 */
+
+  /** Configure the global features of the ADC (Clock, Resolution, Data Alignment and number of conversion)
+  */
+  hadc3.Instance = ADC3;
+  hadc3.Init.ClockPrescaler = ADC_CLOCK_SYNC_PCLK_DIV4;
+  hadc3.Init.Resolution = ADC_RESOLUTION_12B;
+  hadc3.Init.ScanConvMode = DISABLE;
+  hadc3.Init.ContinuousConvMode = DISABLE;
+  hadc3.Init.DiscontinuousConvMode = DISABLE;
+  hadc3.Init.ExternalTrigConvEdge = ADC_EXTERNALTRIGCONVEDGE_NONE;
+  hadc3.Init.ExternalTrigConv = ADC_SOFTWARE_START;
+  hadc3.Init.DataAlign = ADC_DATAALIGN_RIGHT;
+  hadc3.Init.NbrOfConversion = 1;
+  hadc3.Init.DMAContinuousRequests = DISABLE;
+  hadc3.Init.EOCSelection = ADC_EOC_SINGLE_CONV;
+  if (HAL_ADC_Init(&hadc3) != HAL_OK)
+  {
+    Error_Handler();
+  }
+
+  /** Configure for the selected ADC regular channel its corresponding rank in the sequencer and its sample time.
+  */
+  sConfig.Channel = ADC_CHANNEL_11;
+  sConfig.Rank = 1;
+  sConfig.SamplingTime = ADC_SAMPLETIME_3CYCLES;
+  if (HAL_ADC_ConfigChannel(&hadc3, &sConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN ADC3_Init 2 */
+
+  /* USER CODE END ADC3_Init 2 */
 
 }
 

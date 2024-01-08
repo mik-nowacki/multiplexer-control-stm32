@@ -69,8 +69,8 @@ void Error_Handler(void);
 #define PH1_OSC_OUT_GPIO_Port GPIOH
 #define OTG_FS_PowerSwitchOn_Pin GPIO_PIN_0
 #define OTG_FS_PowerSwitchOn_GPIO_Port GPIOC
-#define M1_Analog_Pin GPIO_PIN_2
-#define M1_Analog_GPIO_Port GPIOC
+#define M3_Analog_Pin GPIO_PIN_1
+#define M3_Analog_GPIO_Port GPIOC
 #define PDM_OUT_Pin GPIO_PIN_3
 #define PDM_OUT_GPIO_Port GPIOC
 #define B1_Pin GPIO_PIN_0
@@ -83,10 +83,10 @@ void Error_Handler(void);
 #define SPI1_MISO_GPIO_Port GPIOA
 #define SPI1_MOSI_Pin GPIO_PIN_7
 #define SPI1_MOSI_GPIO_Port GPIOA
-#define M2_Analog_Pin GPIO_PIN_4
-#define M2_Analog_GPIO_Port GPIOC
-#define M3_Analog_Pin GPIO_PIN_5
-#define M3_Analog_GPIO_Port GPIOC
+#define M1_Analog_Pin GPIO_PIN_0
+#define M1_Analog_GPIO_Port GPIOB
+#define M2_Analog_Pin GPIO_PIN_1
+#define M2_Analog_GPIO_Port GPIOB
 #define BOOT1_Pin GPIO_PIN_2
 #define BOOT1_GPIO_Port GPIOB
 #define M1_S0_Pin GPIO_PIN_7
